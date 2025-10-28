@@ -75,6 +75,11 @@ const actionHandler = {
   [ActionTypes.RESET_MAP_CONFIG]: visStateUpdaters.resetMapConfigUpdater,
 
   [ActionTypes.SET_FILTER]: visStateUpdaters.setFilterUpdater,
+  [ActionTypes.SET_TIME_FILTER_WINDOW]: visStateUpdaters.setTimeFilterWindowUpdater,
+  [ActionTypes.SET_TIME_FILTER_STEP]: visStateUpdaters.setTimeFilterStepUpdater,
+  [ActionTypes.SET_TIME_FILTER_WINDOW_WIDTH]: visStateUpdaters.setTimeFilterWindowWidthUpdater,
+  [ActionTypes.SET_TIME_FILTER_SNAP_TO_BIN]: visStateUpdaters.setTimeFilterSnapToBinUpdater,
+  [ActionTypes.ZOOM_TIME_FILTER]: visStateUpdaters.zoomTimeFilterUpdater,
 
   [ActionTypes.SET_FILTER_ANIMATION_TIME]: visStateUpdaters.setFilterAnimationTimeUpdater,
 

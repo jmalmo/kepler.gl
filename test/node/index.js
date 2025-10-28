@@ -12,3 +12,4 @@ import './schemas';
 
 // test processers
 import './processors';
+import './components';

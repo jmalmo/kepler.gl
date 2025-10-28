@@ -2869,6 +2869,181 @@ test('#visStateReducer -> SET_FILTER_ANIMATION_WINDOW', t => {
   t.end();
 });
 
+test('#visStateReducer -> SET_TIME_FILTER_WINDOW', t => {
+  const initialState = CloneDeep(StateWFilters.visState);
+  const originalFilter = initialState.filters[0];
+  const [start, end] = originalFilter.value;
+
+  const nextState = reducer(
+    initialState,
+    VisStateActions.setTimeFilterWindow({
+      idx: 0,
+      window: [start + 2000, end - 1000]
+    })
+  );
+
+  t.deepEqual(
+    nextState.filters[0].value,
+    [start + 2000, end - 1000],
+    'should update time window'
+  );
+
+  const clampedState = reducer(
+    initialState,
+    VisStateActions.setTimeFilterWindow({
+      idx: 0,
+      window: [originalFilter.domain[0] - 100000, originalFilter.domain[1] + 100000]
+    })
+  );
+
+  t.deepEqual(
+    clampedState.filters[0].value,
+    originalFilter.domain,
+    'should clamp window to domain when exceeding bounds'
+  );
+
+  t.end();
+});
+
+test('#visStateReducer -> SET_TIME_FILTER_WINDOW_WIDTH', t => {
+  const initialState = CloneDeep(StateWFilters.visState);
+  const originalFilter = initialState.filters[0];
+  const width = 60 * 60 * 1000; // 1 hour
+
+  const endAnchoredState = reducer(
+    initialState,
+    VisStateActions.setTimeFilterWindowWidth({idx: 0, width})
+  );
+
+  const endAnchoredFilter = endAnchoredState.filters[0];
+  t.equal(endAnchoredFilter.value[1], originalFilter.value[1], 'end anchor should keep end fixed');
+  t.equal(
+    endAnchoredFilter.value[1] - endAnchoredFilter.value[0],
+    width,
+    'window width should match requested width'
+  );
+  t.equal(endAnchoredFilter.zoom?.anchor, 'end', 'default anchor should remain end');
+
+  const startAnchoredState = reducer(
+    endAnchoredState,
+    VisStateActions.setTimeFilterWindowWidth({idx: 0, width, anchor: 'start'})
+  );
+
+  const startAnchoredFilter = startAnchoredState.filters[0];
+  t.equal(startAnchoredFilter.value[0], endAnchoredFilter.value[0], 'start anchor keeps start fixed');
+  t.equal(
+    startAnchoredFilter.value[1] - startAnchoredFilter.value[0],
+    width,
+    'window width should remain consistent'
+  );
+  t.equal(startAnchoredFilter.zoom?.anchor, 'start', 'anchor should update to start');
+
+  const centerAnchoredState = reducer(
+    endAnchoredState,
+    VisStateActions.setTimeFilterWindowWidth({idx: 0, width, anchor: 'center'})
+  );
+
+  const centerAnchoredFilter = centerAnchoredState.filters[0];
+  const center = (endAnchoredFilter.value[0] + endAnchoredFilter.value[1]) / 2;
+  t.equal(centerAnchoredFilter.value[0] + centerAnchoredFilter.value[1], center * 2, 'center anchor recenters window');
+  t.equal(centerAnchoredFilter.zoom?.anchor, 'center', 'anchor should update to center');
+
+  t.end();
+});
+
+test('#visStateReducer -> SET_TIME_FILTER_STEP', t => {
+  const initialState = CloneDeep(StateWFilters.visState);
+  const nextState = reducer(
+    initialState,
+    VisStateActions.setTimeFilterStep({idx: 0, stepMs: 500})
+  );
+
+  t.equal(nextState.filters[0].zoom?.stepMs, 500, 'should update stepMs in zoom options');
+
+  const clearedState = reducer(initialState, VisStateActions.setTimeFilterStep({idx: 0}));
+  t.equal(clearedState.filters[0].zoom?.stepMs, undefined, 'should clear custom step when undefined');
+
+  t.end();
+});
+
+test('#visStateReducer -> SET_TIME_FILTER_SNAP_TO_BIN', t => {
+  const initialState = CloneDeep(StateWFilters.visState);
+  const tweakedState = reducer(
+    initialState,
+    VisStateActions.setTimeFilterWindow({
+      idx: 0,
+      window: [initialState.filters[0].value[0] + 2000, initialState.filters[0].value[1] - 1234]
+    })
+  );
+
+  const unsnappedValue = tweakedState.filters[0].value;
+
+  const snappedState = reducer(tweakedState, VisStateActions.setTimeFilterSnapToBin({idx: 0, snap: true}));
+  const snappedFilter = snappedState.filters[0];
+  t.ok(snappedFilter.zoom?.snapToBin, 'should enable snap to bin');
+  const dataId = snappedFilter.dataId[0];
+  const interval = snappedFilter.plotType?.interval;
+  const bins = interval && dataId ? snappedFilter.timeBins?.[dataId]?.[interval] : null;
+  const sample = bins && bins[0];
+  const binWidth = sample ? sample.x1 - sample.x0 : 0;
+  const base = sample ? sample.x0 : snappedFilter.domain[0];
+  t.equal(
+    snappedFilter.value[0],
+    base + Math.floor((unsnappedValue[0] - base) / binWidth) * binWidth,
+    'start snapped to nearest lower bin boundary'
+  );
+  t.equal(
+    snappedFilter.value[1],
+    base + Math.ceil((unsnappedValue[1] - base) / binWidth) * binWidth,
+    'end snapped to nearest upper bin boundary'
+  );
+
+  const unsnappedState = reducer(snappedState, VisStateActions.setTimeFilterSnapToBin({idx: 0, snap: false}));
+  t.notOk(unsnappedState.filters[0].zoom?.snapToBin, 'should disable snap to bin');
+
+  t.end();
+});
+
+test('#visStateReducer -> ZOOM_TIME_FILTER', t => {
+  const initialState = CloneDeep(StateWFilters.visState);
+  const [start, end] = initialState.filters[0].value;
+  const center = (start + end) / 2;
+
+  const zoomedState = reducer(
+    initialState,
+    VisStateActions.zoomTimeFilter({idx: 0, factor: 2, center})
+  );
+
+  const zoomedFilter = zoomedState.filters[0];
+  t.equal(zoomedFilter.value[1] - zoomedFilter.value[0], (end - start) / 2, 'should reduce window width by factor');
+
+  const snappedState = reducer(
+    initialState,
+    VisStateActions.setTimeFilterSnapToBin({idx: 0, snap: true})
+  );
+  const snappedZoomState = reducer(
+    snappedState,
+    VisStateActions.zoomTimeFilter({idx: 0, factor: 2, center})
+  );
+  const snappedFilter = snappedZoomState.filters[0];
+  const binInfo = snappedFilter.timeBins[snappedFilter.dataId[0]][
+    snappedFilter.plotType.interval
+  ][0];
+  const binWidth = binInfo.x1 - binInfo.x0;
+  t.equal(
+    (snappedFilter.value[0] - binInfo.x0) % binWidth,
+    0,
+    'snapped zoom start should align to bin width'
+  );
+  t.equal(
+    (snappedFilter.value[1] - binInfo.x0) % binWidth,
+    0,
+    'snapped zoom end should align to bin width'
+  );
+
+  t.end();
+});
+
 test('#visStateReducer -> UPDATE_FILTER_ANIMATION_SPEED', t => {
   const initialState = CloneDeep(StateWFilters.visState);
 

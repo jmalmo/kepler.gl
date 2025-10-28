@@ -944,11 +944,12 @@ export const StyledDatePicker = styled(DatePicker)`
     box-sizing: content-box;
     background-color: ${props => props.theme.inputBgd};
     display: flex;
-    justify-content: end;
+    justify-content: center;
     align-items: center;
     height: 22px;
     border: 1px solid ${props => props.theme.inputBgd};
     border-radius: 4px;
+    text-align: center;
   }
 
   .react-date-picker__inputGroup:hover {
@@ -962,12 +963,14 @@ export const StyledDatePicker = styled(DatePicker)`
   .react-date-picker__inputGroup__divider,
   .react-date-picker__inputGroup__leadingZero {
     display: inline-block;
+    color: ${props => props.theme.effectPanelTextMain};
   }
   .react-date-picker__inputGroup__input {
     min-width: 0.54em;
     height: 100%;
     position: relative;
     padding: 0 1px;
+    text-align: center;
     border: 0;
     background: none;
     color: ${props => props.theme.effectPanelTextMain};

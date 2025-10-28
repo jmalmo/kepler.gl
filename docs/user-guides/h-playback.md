@@ -15,5 +15,17 @@ Follow these steps to create a playback video of an event:
 
 ![custom y axis](https://d1a3f4spazzrp4.cloudfront.net/kepler.gl/documentation/h-playback-3.png "select filters")
 
+## Zoom & precision controls
+
+The enlarged timeline now includes tools for focusing on the exact window you need:
+
+- Use the mouse wheel, trackpad pinch, double-click (zoom in), or <kbd>⌥</kbd>/<kbd>Alt</kbd>+double-click (zoom out) to scale around the cursor. Shift–dragging the histogram zooms to the brushed range.
+- Click the calendar button (or the Start/End fields) to open date and time pickers that honor your filter format.
+- Start, End, and Window Width inputs accept ISO timestamps or durations (for example `5 min`) with validation and keyboard arrow nudging. Anchor buttons control which edge stays fixed when resizing.
+- Snap to bin aligns the window to the active histogram interval, and keyboard left/right arrows move the window by the current step (Shift ×10, Alt ×0.1).
+- Quick buttons provide one-click zoom in/out and reset Fit to restore the full data domain.
+
+![Timeline zoom controls](https://d1a3f4spazzrp4.cloudfront.net/kepler.gl/documentation/h-playback-zoom-precision.gif "Timeline zoom and precision controls")
+
 
 [Back to table of contents](README.md)

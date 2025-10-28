@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright contributors to the kepler.gl project
 
-import React, {useMemo} from 'react';
+import React, {useMemo, useCallback, useRef, useEffect} from 'react';
 import throttle from 'lodash/throttle';
 import styled, {IStyledComponent} from 'styled-components';
 
@@ -9,7 +9,7 @@ import RangeSliderFactory from './range-slider';
 import TimeSliderMarkerFactory from './time-slider-marker';
 import PlaybackControlsFactory from './animation-control/playback-controls';
 import TimeRangeSliderTimeTitleFactory from './time-range-slider-time-title';
-import {LineChart, Timeline, AnimationConfig, TimeBins} from '@kepler.gl/types';
+import {LineChart, Timeline, AnimationConfig, TimeBins, TimeFilterZoomOptions} from '@kepler.gl/types';
 import {ActionHandler, setFilterPlot} from '@kepler.gl/actions';
 import AnimationControlFactory from './animation-control/animation-control';
 import {BaseComponentProps} from '../types';
@@ -43,6 +43,11 @@ type TimeRangeSliderProps = {
   timeline: Timeline;
   invertTrendColor?: boolean;
   animationConfig?: AnimationConfig;
+  zoom?: TimeFilterZoomOptions;
+  onZoom?: (factor: number, center: number) => void;
+  onZoomToRange?: (range: [number, number]) => void;
+  onTimelineZoom?: (factor: number, center: number) => void;
+  onTimelinePan?: (delta: number) => void;
 };
 
 export type StyledSliderContainerProps = BaseComponentProps & {
@@ -61,6 +66,10 @@ const StyledSliderContainer: IStyledComponent<
 
   .timeline-container .kg-slider {
     display: none;
+  }
+
+  .timeline-container {
+    touch-action: none;
   }
 
   .playback-controls {
@@ -117,13 +126,158 @@ export default function TimeRangeSliderFactory(
       toggleAnimation,
       onChange,
       setFilterPlot,
-      timeline
+      timeline,
+      onZoom,
+      onZoomToRange,
+      onTimelineZoom,
+      onTimelinePan
     } = props;
 
     const throttledOnchange = useMemo(() => throttle(onChange, 20), [onChange]);
+
+    useEffect(() => {
+      return () => {
+        throttledOnchange.cancel();
+      };
+    }, [throttledOnchange]);
     const binsForInterval = useMemo(
       () => getTimeBinsForInterval(timeBins, plotType?.interval),
       [timeBins, plotType?.interval]
+    );
+
+    const timelineRef = useRef<HTMLDivElement | null>(null);
+
+    const throttledZoom = useMemo(() => {
+      if (!onZoom) {
+        return null;
+      }
+      return throttle((factor: number, center: number) => {
+        onZoom(factor, center);
+      }, 50);
+    }, [onZoom]);
+
+    useEffect(() => {
+      return () => {
+        throttledZoom?.cancel();
+      };
+    }, [throttledZoom]);
+
+    const throttledTimelineZoom = useMemo(() => {
+      if (!onTimelineZoom) {
+        return null;
+      }
+      return throttle((factor: number, center: number) => {
+        onTimelineZoom(factor, center);
+      }, 50);
+    }, [onTimelineZoom]);
+
+    useEffect(() => {
+      return () => {
+        throttledTimelineZoom?.cancel();
+      };
+    }, [throttledTimelineZoom]);
+
+    const throttledTimelinePan = useMemo(() => {
+      if (!onTimelinePan) {
+        return null;
+      }
+      return throttle((delta: number) => {
+        onTimelinePan(delta);
+      }, 16);
+    }, [onTimelinePan]);
+
+    useEffect(() => {
+      return () => {
+        throttledTimelinePan?.cancel();
+      };
+    }, [throttledTimelinePan]);
+
+    useEffect(() => {
+      const node = timelineRef.current;
+      if (!node) {
+        return undefined;
+      }
+      const preventBrowserZoom = (event: WheelEvent) => {
+        const isPinchGesture =
+          event.ctrlKey || event.metaKey || Math.abs(event.deltaZ || 0) > 0;
+        if (isPinchGesture) {
+          event.preventDefault();
+        }
+      };
+      node.addEventListener('wheel', preventBrowserZoom, {passive: false});
+      return () => {
+        node.removeEventListener('wheel', preventBrowserZoom);
+      };
+    }, []);
+
+    const computeCenter = useCallback(
+      (clientX: number) => {
+        const rect = timelineRef.current?.getBoundingClientRect();
+        if (!domain || !rect || !rect.width) {
+          return null;
+        }
+        const ratio = (clientX - rect.left) / rect.width;
+        const clamped = Math.min(Math.max(ratio, 0), 1);
+        return domain[0] + clamped * (domain[1] - domain[0]);
+      },
+      [domain]
+    );
+
+    const handleWheel = useCallback(
+      (event: React.WheelEvent<HTMLDivElement>) => {
+        if (isMinified) {
+          return;
+        }
+        const nativeEvent = event.nativeEvent as WheelEvent;
+        const center = computeCenter(event.clientX);
+        if (center === null) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (event.deltaY === 0) {
+          return;
+        }
+
+        const container = timelineRef.current?.closest<HTMLDivElement>('.bottom-widget--inner');
+        container?.focus({preventScroll: true});
+        const isPinchGesture =
+          event.ctrlKey ||
+          nativeEvent.ctrlKey ||
+          nativeEvent.metaKey ||
+          Math.abs(nativeEvent.deltaZ || 0) > 0;
+        const baseStep = isPinchGesture ? 0.05 : 0.2;
+        const factor = event.deltaY < 0 ? 1 + baseStep : 1 / (1 + baseStep);
+        if (isPinchGesture && throttledTimelineZoom) {
+          throttledTimelineZoom(factor, center);
+        } else if (throttledZoom) {
+          throttledZoom(factor, center);
+        }
+      },
+      [computeCenter, throttledTimelineZoom, throttledZoom, isMinified]
+    );
+
+    const handleShiftBrush = useCallback(
+      (range: [number, number]) => {
+        if (!onZoomToRange) {
+          return;
+        }
+        const [val0, val1] = range;
+        const ordered: [number, number] = val0 <= val1 ? [val0, val1] : [val1, val0];
+        const container = timelineRef.current?.closest<HTMLDivElement>('.bottom-widget--inner');
+        container?.focus({preventScroll: true});
+        onZoomToRange(ordered);
+      },
+      [onZoomToRange]
+    );
+
+    const handleCtrlPan = useCallback(
+      (delta: number) => {
+        throttledTimelinePan?.(delta);
+      },
+      [throttledTimelinePan]
     );
 
     const style = useMemo(
@@ -147,7 +301,12 @@ export default function TimeRangeSliderFactory(
         ) : null}
         <StyledSliderContainer className="time-range-slider__container" isEnlarged={isEnlarged}>
           {!isMinified ? (
-            <div className="timeline-container" style={style}>
+            <div
+              className="timeline-container"
+              style={style}
+              ref={timelineRef}
+              onWheel={handleWheel}
+            >
               <RangeSlider
                 range={domain}
                 value0={value[0]}
@@ -164,6 +323,8 @@ export default function TimeRangeSliderFactory(
                 timezone={timezone}
                 timeFormat={timeFormat}
                 setFilterPlot={setFilterPlot}
+                onShiftBrush={handleShiftBrush}
+                onCtrlPan={handleCtrlPan}
               />
             </div>
           ) : (

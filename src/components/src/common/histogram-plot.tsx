@@ -56,26 +56,6 @@ const BarUnmemoized = styled.rect<BarType>(
 const Bar = React.memo(BarUnmemoized);
 Bar.displayName = 'Bar';
 
-const isBarInRange = (
-  bar: {x0: number; x1: number},
-  index: number,
-  list: any[],
-  filterDomain: any[],
-  filterValue: any[]
-) => {
-  // first
-  // if x0 <= domain[0] and current value[0] wasn't changed from the original domain
-  const x0Condition =
-    index === 0 ? bar.x0 <= filterDomain[0] && filterDomain[0] === filterValue[0] : false;
-  // Last
-  // if x1 >= domain[1] and current value[1] wasn't changed from the original domain
-  const x1Condition =
-    index === list.length - 1
-      ? bar.x1 >= filterDomain[1] && filterDomain[1] === filterValue[1]
-      : false;
-  return (x0Condition || bar.x0 >= filterValue[0]) && (x1Condition || bar.x1 <= filterValue[1]);
-};
-
 export type HistogramMaskModeType = {
   NoMask: number;
   Mask: number;
@@ -112,7 +92,6 @@ function HistogramPlotFactory() {
     brushComponent,
     breakLines
   }: HistogramPlotProps) => {
-    const undefinedToZero = (x: number | undefined) => (x ? x : 0);
     const groupKeys = useMemo(
       () =>
         Object.keys(histogramsByGroup)
@@ -171,6 +150,21 @@ function HistogramPlotFactory() {
       return null;
     }
 
+    const getBarLayout = (bar: {x0: number; x1: number}) => {
+      const windowStart = value[0];
+      const windowEnd = value[1];
+      const overlapsWindow = bar.x1 > windowStart && bar.x0 < windowEnd;
+      const touchesDomainStart = windowStart <= domain[0] && bar.x0 <= domain[0] && bar.x1 > domain[0];
+      const touchesDomainEnd = windowEnd >= domain[1] && bar.x1 >= domain[1] && bar.x0 < domain[1];
+      const inRange = overlapsWindow || touchesDomainStart || touchesDomainEnd;
+
+      const ratio = inRange ? histogramStyle.highlightW : histogramStyle.unHighlightedW;
+      const widthPx = barWidth * ratio;
+      const xPos = x(bar.x0) + (barWidth - widthPx) / 2;
+
+      return {inRange, width: widthPx, x: xPos};
+    };
+
     const maskedHistogram = () => {
       return (
         <HistogramWrapper
@@ -189,19 +183,16 @@ function HistogramPlotFactory() {
               />
               <g key="filtered-bins" className="histogram-bars">
                 {histogramsByGroup.filteredBins.map((bar, idx, list) => {
-                  const inRange = isBarInRange(bar, idx, list, domain, value);
-                  const wRatio = inRange
-                    ? histogramStyle.highlightW
-                    : histogramStyle.unHighlightedW;
+                  const layout = getBarLayout(bar);
                   return (
                     <Bar
                       $isOverlay={false}
-                      $inRange={inRange}
+                      $inRange={layout.inRange}
                       $color={HISTOGRAM_MASK_FGCOLOR}
                       key={`mask-${idx}`}
                       height={y(bar[countProp])}
-                      width={barWidth * wRatio}
-                      x={x(bar.x0) + (barWidth * (1 - wRatio)) / 2}
+                      width={layout.width}
+                      x={layout.x}
                       y={height - y(bar[countProp])}
                     />
                   );
@@ -225,16 +216,15 @@ function HistogramPlotFactory() {
                 const maskHeight = filterBar
                   ? y(bar[countProp]) - y(filterBar[countProp])
                   : y(bar[countProp]);
-                const inRange = isBarInRange(bar, idx, list, domain, value);
-                const wRatio = inRange ? histogramStyle.highlightW : histogramStyle.unHighlightedW;
+                const layout = getBarLayout(bar);
                 return (
                   <Bar
-                    $inRange={inRange}
+                    $inRange={layout.inRange}
                     $isOverlay={true}
                     key={`bar-${idx}`}
                     height={maskHeight}
-                    width={barWidth * wRatio}
-                    x={x(bar.x0) + (barWidth * (1 - wRatio)) / 2}
+                    width={layout.width}
+                    x={layout.x}
                     y={height - y(bar[countProp])}
                   />
                 );
@@ -264,21 +254,18 @@ function HistogramPlotFactory() {
         <g>
           {groupKeys.map((key, i) => (
             <g key={key} className="histogram-bars">
-              {histogramsByGroup[key].map((bar, idx, list) => {
-                const inRange = isBarInRange(bar, idx, list, domain, value);
-
-                const wRatio = inRange ? histogramStyle.highlightW : histogramStyle.unHighlightedW;
-                const startX =
-                  x(undefinedToZero(bar.x0)) + barWidth * i + (barWidth * (1 - wRatio)) / 2;
-                if (startX > 0 && startX + barWidth * histogramStyle.unHighlightedW <= width) {
+              {histogramsByGroup[key].map((bar, idx) => {
+                const layout = getBarLayout(bar);
+                const startX = layout.x + barWidth * i;
+                if (startX > 0 && startX + layout.width <= width) {
                   return (
                     <Bar
                       $isOverlay={false}
-                      $inRange={inRange}
+                      $inRange={layout.inRange}
                       $color={colorsByGroup?.[key]}
-                      key={`bar-${idx}`}
+                      key={`bar-${key}-${idx}`}
                       height={y(bar[countProp])}
-                      width={barWidth * wRatio}
+                      width={layout.width}
                       x={startX}
                       rx={1}
                       ry={1}

@@ -147,6 +147,14 @@ export type MultiSelectFilter = FilterBase<LineChart> &
 
 export type SyncTimelineMode = 0 | 1;
 
+export type TimeFilterZoomAnchor = 'start' | 'end' | 'center';
+
+export type TimeFilterZoomOptions = {
+  stepMs?: number;
+  snapToBin?: boolean;
+  anchor?: TimeFilterZoomAnchor;
+};
+
 export type TimeRangeFilter = FilterBase<LineChart> &
   TimeRangeFieldDomain & {
     type: 'timeRange';
@@ -160,6 +168,7 @@ export type TimeRangeFilter = FilterBase<LineChart> &
     syncTimelineMode: SyncTimelineMode;
     animationWindow: string;
     invertTrendColor: boolean;
+    zoom?: TimeFilterZoomOptions;
   };
 
 export type PolygonFilter = FilterBase<LineChart> & {
@@ -592,6 +601,7 @@ export type TypedTimeRangeFilter = FilterBaseOmitRedudant &
     };
     animationWindow: string;
     invertTrendColor: boolean;
+    zoom?: TimeFilterZoomOptions;
   };
 
 export type TypedPolygonFilter = FilterBaseOmitRedudant & {

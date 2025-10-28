@@ -84,6 +84,8 @@ interface RangeSliderProps {
   datasets?: Datasets;
 
   invertTrendColor?: boolean;
+  onShiftBrush?: (range: [number, number]) => void;
+  onCtrlPan?: (delta: number) => void;
 }
 
 const RANGE_SLIDER_TIMELINE_PANEL_STYLE = {marginLeft: '-32px'};
@@ -264,12 +266,14 @@ export default function RangeSliderFactory(
           {Array.isArray(range) && range.every(Number.isFinite) && (
             <>
               {hasPlot ? (
-                <RangePlot
+              <RangePlot
                   bins={bins}
                   lineChart={lineChart}
                   plotType={plotType}
                   invertTrendColor={invertTrendColor}
                   isEnlarged={this.props.isEnlarged}
+                  onShiftBrush={this.props.onShiftBrush}
+                  onCtrlPan={this.props.onCtrlPan}
                   onBrush={(val0, val1) => onChange([val0, val1])}
                   marks={this.props.marks}
                   animationWindow={animationWindow}

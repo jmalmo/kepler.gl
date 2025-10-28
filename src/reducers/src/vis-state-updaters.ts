@@ -1116,6 +1116,26 @@ export function setFilterAnimationTimeUpdater(
   state: VisState,
   action: VisStateActions.SetFilterAnimationTimeUpdaterAction
 ): VisState {
+  if (action.prop === 'value') {
+    const filter = state.filters[action.idx];
+    if (filter?.type === FILTER_TYPES.timeRange && Array.isArray(action.value)) {
+      const domain = Array.isArray(filter.domain)
+        ? (filter.domain as [number, number])
+        : undefined;
+      if (domain) {
+        const [min, max] = domain;
+        const ordered = orderWindow([
+          clampValueToDomain(action.value[0], domain),
+          clampValueToDomain(action.value[1], domain)
+        ]);
+        const clampedValue = [Math.max(ordered[0], min), Math.min(ordered[1], max)];
+        action = {
+          ...action,
+          value: clampedValue
+        };
+      }
+    }
+  }
   return setFilterUpdater(state, action);
 }
 
@@ -1147,6 +1167,145 @@ export function setFilterAnimationWindowUpdater<S extends VisState>(
   const newSyncTimelineMode = getSyncAnimationMode(newFilter as TimeRangeFilter);
 
   return setTimeFilterTimelineModeUpdater(newState, {id, mode: newSyncTimelineMode});
+}
+
+function normalizeTimeFilterZoom(filter: TimeRangeFilter): TimeRangeFilter {
+  const zoom = filter.zoom || {};
+  const stepMs =
+    typeof zoom.stepMs === 'number' && Number.isFinite(zoom.stepMs)
+      ? zoom.stepMs
+      : typeof filter.step === 'number' && Number.isFinite(filter.step)
+      ? filter.step
+      : undefined;
+
+  const anchor =
+    zoom.anchor === 'start' || zoom.anchor === 'center' || zoom.anchor === 'end'
+      ? zoom.anchor
+      : 'end';
+
+  return {
+    ...filter,
+    zoom: {
+      stepMs,
+      snapToBin: typeof zoom.snapToBin === 'boolean' ? zoom.snapToBin : false,
+      anchor
+    }
+  };
+}
+
+const isFiniteNumber = (value: number): value is number => Number.isFinite(value);
+
+function clampValueToDomain(value: number, domain?: [number, number]): number {
+  if (!domain) {
+    return value;
+  }
+  const [min, max] = domain;
+  if (min > max) {
+    return value;
+  }
+  return Math.min(Math.max(value, min), max);
+}
+
+function orderWindow([start, end]: [number, number]): [number, number] {
+  return start <= end ? [start, end] : [end, start];
+}
+
+function adjustWindowToDomain(
+  window: [number, number],
+  domain?: [number, number]
+): [number, number] {
+  if (!domain) {
+    return window;
+  }
+  const [min, max] = domain;
+  if (!isFiniteNumber(min) || !isFiniteNumber(max) || min >= max) {
+    return window;
+  }
+  const width = window[1] - window[0];
+  const domainWidth = max - min;
+  if (width >= domainWidth) {
+    return [min, max];
+  }
+  let start = window[0];
+  let end = window[1];
+
+  if (start < min) {
+    end += min - start;
+    start = min;
+  }
+
+  if (end > max) {
+    start -= end - max;
+    end = max;
+  }
+
+  start = clampValueToDomain(start, domain);
+  end = clampValueToDomain(end, domain);
+
+  return orderWindow([start, end]);
+}
+
+function getEffectiveStepMs(filter: TimeRangeFilter): number {
+  const normalized = normalizeTimeFilterZoom(filter);
+  const step = normalized.zoom?.stepMs;
+  if (typeof step === 'number' && step > 0) {
+    return step;
+  }
+  if (typeof filter.step === 'number' && filter.step > 0) {
+    return filter.step;
+  }
+  return 0;
+}
+
+type TimeBinInfo = {
+  width: number;
+  offset: number;
+};
+
+function getTimeFilterBinInfo(filter: TimeRangeFilter): TimeBinInfo | null {
+  const interval = filter.plotType?.interval;
+  if (!interval || !filter.timeBins) {
+    return null;
+  }
+
+  for (const dataId of filter.dataId || []) {
+    const binsForDataset = filter.timeBins?.[dataId];
+    const bins = binsForDataset?.[interval];
+    if (Array.isArray(bins) && bins.length) {
+      const sample = bins.find(
+        bin => isFiniteNumber(bin?.x0) && isFiniteNumber(bin?.x1) && bin.x1 !== bin.x0
+      );
+      if (sample) {
+        const width = sample.x1 - sample.x0;
+        if (width > 0) {
+          return {
+            width,
+            offset: sample.x0
+          };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function snapWindowToBins(
+  filter: TimeRangeFilter,
+  window: [number, number]
+): [number, number] {
+  const binInfo = getTimeFilterBinInfo(filter);
+  if (!binInfo) {
+    return window;
+  }
+
+  const [start, end] = window;
+  const {width, offset} = binInfo;
+
+  const snappedStart = Math.floor((start - offset) / width) * width + offset;
+  const snappedEnd = Math.ceil((end - offset) / width) * width + offset;
+
+  return orderWindow([snappedStart, snappedEnd]);
 }
 
 export function applyFilterConfigUpdater(
@@ -1229,6 +1388,10 @@ export function setFilterUpdater<S extends VisState>(
     datasetIdsToFilter = datasetIdsToFilter.concat(res.datasetIdsToFilter);
   }
 
+  if (newFilter.type === FILTER_TYPES.timeRange) {
+    newFilter = normalizeTimeFilterZoom(newFilter as TimeRangeFilter);
+  }
+
   const enlargedFilter = state.filters.find(f => f.view === FILTER_VIEW_TYPES.enlarged);
 
   if (enlargedFilter && enlargedFilter.id !== newFilter.id) {
@@ -1264,6 +1427,240 @@ export function setFilterUpdater<S extends VisState>(
   }
 
   return newState;
+}
+
+export function setTimeFilterWindowUpdater(
+  state: VisState,
+  {idx, window, enforceBounds = true, snap}: VisStateActions.SetTimeFilterWindowUpdaterAction
+): VisState {
+  const filter = state.filters[idx];
+  if (!filter) {
+    Console.error(`filters.${idx} is undefined`);
+    return state;
+  }
+  if (filter.type !== FILTER_TYPES.timeRange) {
+    Console.error('setTimeFilterWindow can only be called on a timeRange filter');
+    return state;
+  }
+
+  const [rawStart, rawEnd] = window;
+  if (!isFiniteNumber(rawStart) || !isFiniteNumber(rawEnd)) {
+    return state;
+  }
+
+  let [start, end] = orderWindow([rawStart, rawEnd]);
+  const timeFilter = normalizeTimeFilterZoom(filter as TimeRangeFilter);
+  const domain = Array.isArray(timeFilter.domain) ? (timeFilter.domain as [number, number]) : undefined;
+
+  const shouldSnap = (snap ?? timeFilter.zoom?.snapToBin) && !!getTimeFilterBinInfo(timeFilter);
+  if (shouldSnap) {
+    [start, end] = snapWindowToBins(timeFilter, [start, end]);
+  }
+
+  if (enforceBounds) {
+    [start, end] = adjustWindowToDomain([start, end], domain);
+  }
+
+  start = clampValueToDomain(start, domain);
+  end = clampValueToDomain(end, domain);
+
+  if (end <= start) {
+    const step = getEffectiveStepMs(timeFilter);
+    if (step > 0) {
+      end = clampValueToDomain(start + step, domain);
+      if (end <= start && enforceBounds && domain) {
+        start = Math.max(domain[0], end - step);
+      }
+    }
+  }
+
+  return setFilterUpdater(state, setFilter(idx, 'value', [start, end]));
+}
+
+export function setTimeFilterStepUpdater(
+  state: VisState,
+  {idx, stepMs}: VisStateActions.SetTimeFilterStepUpdaterAction
+): VisState {
+  const filter = state.filters[idx];
+  if (!filter) {
+    Console.error(`filters.${idx} is undefined`);
+    return state;
+  }
+  if (filter.type !== FILTER_TYPES.timeRange) {
+    Console.error('setTimeFilterStep can only be called on a timeRange filter');
+    return state;
+  }
+
+  const timeFilter = normalizeTimeFilterZoom(filter as TimeRangeFilter);
+  const sanitizedStep = typeof stepMs === 'number' && stepMs > 0 ? stepMs : undefined;
+  const nextZoom = {
+    ...timeFilter.zoom,
+    stepMs: sanitizedStep
+  };
+
+  return setFilterUpdater(state, setFilter(idx, 'zoom', nextZoom));
+}
+
+export function setTimeFilterWindowWidthUpdater(
+  state: VisState,
+  {idx, width, anchor}: VisStateActions.SetTimeFilterWindowWidthUpdaterAction
+): VisState {
+  const filter = state.filters[idx];
+  if (!filter) {
+    Console.error(`filters.${idx} is undefined`);
+    return state;
+  }
+  if (filter.type !== FILTER_TYPES.timeRange) {
+    Console.error('setTimeFilterWindowWidth can only be called on a timeRange filter');
+    return state;
+  }
+
+  const timeFilter = normalizeTimeFilterZoom(filter as TimeRangeFilter);
+  const zoom = timeFilter.zoom || {anchor: 'end', snapToBin: false};
+
+  const targetAnchor = anchor || zoom.anchor || 'end';
+  const currentValue = orderWindow(timeFilter.value as [number, number]);
+  const domain = Array.isArray(timeFilter.domain) ? (timeFilter.domain as [number, number]) : undefined;
+
+  const domainWidth = domain ? domain[1] - domain[0] : undefined;
+  const minStep = getEffectiveStepMs(timeFilter) || 0;
+  const sanitizedWidth = Math.max(width || 0, minStep || 0);
+  const boundedWidth = domainWidth && sanitizedWidth > domainWidth ? domainWidth : sanitizedWidth;
+  if (!boundedWidth || boundedWidth <= 0 || !isFiniteNumber(boundedWidth)) {
+    return state;
+  }
+
+  let nextStart: number;
+  let nextEnd: number;
+  const [currentStart, currentEnd] = currentValue;
+
+  switch (targetAnchor) {
+    case 'start':
+      nextStart = currentStart;
+      nextEnd = currentStart + boundedWidth;
+      break;
+    case 'center': {
+      const center = (currentStart + currentEnd) / 2;
+      nextStart = center - boundedWidth / 2;
+      nextEnd = center + boundedWidth / 2;
+      break;
+    }
+    case 'end':
+    default:
+      nextEnd = currentEnd;
+      nextStart = currentEnd - boundedWidth;
+      break;
+  }
+
+  [nextStart, nextEnd] = adjustWindowToDomain([nextStart, nextEnd], domain);
+
+  if (zoom.snapToBin) {
+    [nextStart, nextEnd] = snapWindowToBins(timeFilter, [nextStart, nextEnd]);
+    [nextStart, nextEnd] = adjustWindowToDomain([nextStart, nextEnd], domain);
+  }
+
+  nextStart = clampValueToDomain(nextStart, domain);
+  nextEnd = clampValueToDomain(nextEnd, domain);
+  if (nextEnd <= nextStart) {
+    nextEnd = clampValueToDomain(nextStart + (minStep || boundedWidth), domain);
+  }
+
+  const nextZoom = {
+    ...zoom,
+    anchor: targetAnchor
+  };
+
+  return setFilterUpdater(
+    state,
+    setFilter(idx, ['value', 'zoom'], [[nextStart, nextEnd], nextZoom])
+  );
+}
+
+export function setTimeFilterSnapToBinUpdater(
+  state: VisState,
+  {idx, snap}: VisStateActions.SetTimeFilterSnapToBinUpdaterAction
+): VisState {
+  const filter = state.filters[idx];
+  if (!filter) {
+    Console.error(`filters.${idx} is undefined`);
+    return state;
+  }
+  if (filter.type !== FILTER_TYPES.timeRange) {
+    Console.error('setTimeFilterSnapToBin can only be called on a timeRange filter');
+    return state;
+  }
+
+  const timeFilter = normalizeTimeFilterZoom(filter as TimeRangeFilter);
+  const zoom = timeFilter.zoom || {anchor: 'end', snapToBin: false};
+  const nextZoom = {
+    ...zoom,
+    snapToBin: snap
+  };
+
+  let nextValue = orderWindow(timeFilter.value as [number, number]);
+  nextValue = adjustWindowToDomain(nextValue, Array.isArray(timeFilter.domain) ? (timeFilter.domain as [number, number]) : undefined);
+
+  if (snap) {
+    nextValue = snapWindowToBins(timeFilter, nextValue);
+    nextValue = adjustWindowToDomain(
+      nextValue,
+      Array.isArray(timeFilter.domain) ? (timeFilter.domain as [number, number]) : undefined
+    );
+  }
+
+  return setFilterUpdater(
+    state,
+    setFilter(idx, ['value', 'zoom'], [nextValue, nextZoom])
+  );
+}
+
+export function zoomTimeFilterUpdater(
+  state: VisState,
+  {idx, factor, center}: VisStateActions.ZoomTimeFilterUpdaterAction
+): VisState {
+  const filter = state.filters[idx];
+  if (!filter) {
+    Console.error(`filters.${idx} is undefined`);
+    return state;
+  }
+  if (filter.type !== FILTER_TYPES.timeRange) {
+    Console.error('zoomTimeFilter can only be called on a timeRange filter');
+    return state;
+  }
+
+  const timeFilter = normalizeTimeFilterZoom(filter as TimeRangeFilter);
+  const domain = Array.isArray(timeFilter.domain) ? (timeFilter.domain as [number, number]) : undefined;
+
+  const currentValue = orderWindow(timeFilter.value as [number, number]);
+  const currentWidth = Math.max(currentValue[1] - currentValue[0], getEffectiveStepMs(timeFilter));
+  const effectiveFactor = factor && factor !== 0 ? factor : 1;
+  const targetWidth = currentWidth / effectiveFactor;
+
+  if (!isFiniteNumber(targetWidth) || targetWidth <= 0) {
+    return state;
+  }
+
+  const domainWidth = domain ? domain[1] - domain[0] : undefined;
+  const boundedWidth = domainWidth && targetWidth > domainWidth ? domainWidth : targetWidth;
+
+  const clampedCenter = clampValueToDomain(center, domain);
+  let nextStart = clampedCenter - boundedWidth / 2;
+  let nextEnd = clampedCenter + boundedWidth / 2;
+
+  [nextStart, nextEnd] = adjustWindowToDomain([nextStart, nextEnd], domain);
+
+  if ((timeFilter.zoom?.snapToBin ?? false) && getTimeFilterBinInfo(timeFilter)) {
+    [nextStart, nextEnd] = snapWindowToBins(timeFilter, [nextStart, nextEnd]);
+    [nextStart, nextEnd] = adjustWindowToDomain([nextStart, nextEnd], domain);
+  }
+
+  nextStart = clampValueToDomain(nextStart, domain);
+  nextEnd = clampValueToDomain(nextEnd, domain);
+  if (nextEnd <= nextStart) {
+    nextEnd = clampValueToDomain(nextStart + getEffectiveStepMs(timeFilter), domain);
+  }
+
+  return setFilterUpdater(state, setFilter(idx, 'value', [nextStart, nextEnd]));
 }
 
 function _updateFilterDataIdAtValueIndex(filter, valueIndex, value, datasets) {

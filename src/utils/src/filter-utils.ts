@@ -122,7 +122,9 @@ export const DEFAULT_FILTER_STRUCTURE = {
   yAxis: null,
 
   // mode
-  gpu: false
+  gpu: false,
+
+  zoom: undefined
 };
 
 export const FILTER_ID_LENGTH = 4;
@@ -339,40 +341,46 @@ export function getFilterProps(
       };
 
     case ALL_FIELD_TYPES.boolean:
-      // @ts-expect-error
       return {
         ...filterProps,
         type: FILTER_TYPES.select,
         value: true,
         gpu: false
-      };
+      } as Partial<Filter> & {fieldType: string};
 
     case ALL_FIELD_TYPES.string:
     case ALL_FIELD_TYPES.h3:
     case ALL_FIELD_TYPES.date:
-      // @ts-expect-error
       return {
         ...filterProps,
         type: FILTER_TYPES.multiSelect,
         value: [],
         gpu: false
-      };
+      } as Partial<Filter> & {fieldType: string};
 
-    case ALL_FIELD_TYPES.timestamp:
-      // @ts-expect-error
+    case ALL_FIELD_TYPES.timestamp: {
+      const timeFilterProps = filterProps as TimeRangeFieldDomain;
       return {
-        ...filterProps,
+        ...timeFilterProps,
         type: FILTER_TYPES.timeRange,
         view: FILTER_VIEW_TYPES.enlarged,
         fixedDomain: true,
-        value: filterProps.domain,
+        value: timeFilterProps.domain,
         gpu: true,
-        plotType: {}
-      };
+        plotType: {},
+        zoom: {
+          stepMs:
+            typeof timeFilterProps.step === 'number' && Number.isFinite(timeFilterProps.step)
+              ? timeFilterProps.step
+              : undefined,
+          snapToBin: false,
+          anchor: 'end'
+        }
+      } as Partial<Filter> & {fieldType: string};
+    }
 
     default:
-      // @ts-expect-error
-      return {};
+      return {} as Partial<Filter> & {fieldType: string};
   }
 }
 
@@ -1052,15 +1060,43 @@ export function mergeFilterDomainStep(
       };
 
     case ALL_FIELD_TYPES.timestamp: {
+      const currentStep = (filter as TimeRangeFilter).step;
+      const incomingStep = (filterProps as TimeRangeFieldDomain).step;
+      const candidateSteps = [currentStep, incomingStep].filter(
+        s => typeof s === 'number' && Number.isFinite(s)
+      ) as number[];
       const step =
-        (filter as TimeRangeFilter).step < (filterProps as TimeRangeFieldDomain).step
-          ? (filter as TimeRangeFilter).step
-          : (filterProps as TimeRangeFieldDomain).step;
+        candidateSteps.length > 0
+          ? Math.min(...candidateSteps)
+          : typeof incomingStep === 'number' && Number.isFinite(incomingStep)
+          ? incomingStep
+          : currentStep;
+
+      const prevZoom = (filter as TimeRangeFilter).zoom || {};
+      const zoomStepCandidates = [prevZoom.stepMs, step].filter(
+        s => typeof s === 'number' && Number.isFinite(s)
+      ) as number[];
+      const stepMs =
+        zoomStepCandidates.length > 0
+          ? Math.min(...zoomStepCandidates)
+          : typeof prevZoom.stepMs === 'number' && Number.isFinite(prevZoom.stepMs)
+          ? prevZoom.stepMs
+          : step;
+
+      const anchor =
+        prevZoom.anchor === 'start' || prevZoom.anchor === 'center' || prevZoom.anchor === 'end'
+          ? prevZoom.anchor
+          : 'end';
 
       return {
-        ...newFilter,
-        step
-      };
+        ...(newFilter as TimeRangeFilter),
+        step,
+        zoom: {
+          stepMs,
+          snapToBin: typeof prevZoom.snapToBin === 'boolean' ? prevZoom.snapToBin : false,
+          anchor
+        }
+      } as Filter;
     }
     case ALL_FIELD_TYPES.real:
     case ALL_FIELD_TYPES.integer:

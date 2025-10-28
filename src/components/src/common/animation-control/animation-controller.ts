@@ -33,6 +33,8 @@ class AnimationControllerType<T extends number | number[]> extends Component<
   AnimationControllerProps<T>
 > {}
 
+const MIN_RANGE_WIDTH = 1e-6;
+
 function AnimationControllerFactory(): typeof AnimationControllerType {
   /**
    * 4 Animation Window Types
@@ -86,6 +88,7 @@ function AnimationControllerFactory(): typeof AnimationControllerType {
 
     _timer = null;
     _startTime = 0;
+    _rangeWidth: number | null = null;
 
     _startOrPauseAnimation() {
       const {isAnimating, speed = 1} = this.props;
@@ -125,11 +128,18 @@ function AnimationControllerFactory(): typeof AnimationControllerType {
       if (Array.isArray(value)) {
         if (animationWindow === ANIMATION_WINDOW.incremental) {
           setTimelineValue([value[0], value[0] + 1] as T);
+          this._rangeWidth = 1;
         } else {
-          setTimelineValue([domain[0], domain[0] + value[1] - value[0]] as T);
+          const currentWidth = value[1] - value[0];
+          const domainWidth = domain[1] - domain[0];
+          const width =
+            currentWidth > MIN_RANGE_WIDTH ? Math.min(currentWidth, domainWidth) : domainWidth;
+          this._rangeWidth = width;
+          setTimelineValue([domain[0], Math.min(domain[0] + width, domain[1])] as T);
         }
       } else {
         setTimelineValue(domain[0] as T);
+        this._rangeWidth = null;
       }
     };
 
@@ -214,11 +224,28 @@ function AnimationControllerFactory(): typeof AnimationControllerType {
           const lastFrame = value[1] + delta > domain[1];
           value0 = value[0];
           value1 = lastFrame ? value[0] + 1 : value[1] + delta;
+          this._rangeWidth = value1 - value0;
         } else {
-          // use value[0] to display the last item  duration as the first item
-          const lastFrame = value[0] + delta > domain[1];
-          value0 = lastFrame ? domain[0] : value[0] + delta;
-          value1 = value0 + value[1] - value[0];
+          const domainWidth = domain[1] - domain[0];
+          const currentWidth = value[1] - value[0];
+          if (currentWidth > MIN_RANGE_WIDTH) {
+            this._rangeWidth = Math.min(currentWidth, domainWidth);
+          } else if (this._rangeWidth === null) {
+            this._rangeWidth = Math.max(domainWidth, 0);
+          }
+          const windowWidth =
+            this._rangeWidth && this._rangeWidth > MIN_RANGE_WIDTH
+              ? Math.min(this._rangeWidth, domainWidth)
+              : Math.max(domainWidth, currentWidth);
+          const maxStart = domain[1] - windowWidth;
+          const proposedStart = value[0] + delta;
+          const shouldLoop = proposedStart > maxStart;
+          value0 = shouldLoop ? domain[0] : Math.min(Math.max(proposedStart, domain[0]), maxStart);
+          value1 = value0 + windowWidth;
+          if (value1 > domain[1]) {
+            value1 = domain[1];
+            value0 = Math.max(domain[0], value1 - windowWidth);
+          }
         }
         return [value0, value1];
       }

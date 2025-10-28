@@ -19,7 +19,12 @@ import {
   setTimeFilterSyncTimelineMode,
   setFilterPlot,
   toggleFilterAnimation,
-  updateFilterAnimationSpeed
+  updateFilterAnimationSpeed,
+  setTimeFilterWindow,
+  setTimeFilterWindowWidth,
+  setTimeFilterSnapToBin,
+  setTimeFilterStep,
+  zoomTimeFilter
 } from '@kepler.gl/actions';
 import {Datasets} from '@kepler.gl/table';
 import {BaseComponentProps} from '../types';
@@ -95,4 +100,9 @@ export type TimeWidgetProps = {
   setFilterSyncTimelineMode: ActionHandler<typeof setTimeFilterSyncTimelineMode>;
   timeline: Timeline;
   animationConfig: AnimationConfig;
+  setTimeFilterWindow: ActionHandler<typeof setTimeFilterWindow>;
+  setTimeFilterWindowWidth: ActionHandler<typeof setTimeFilterWindowWidth>;
+  setTimeFilterSnapToBin: ActionHandler<typeof setTimeFilterSnapToBin>;
+  setTimeFilterStep: ActionHandler<typeof setTimeFilterStep>;
+  zoomTimeFilter: ActionHandler<typeof zoomTimeFilter>;
 };

@@ -3,7 +3,7 @@
 
 import pick from 'lodash/pick';
 import {VERSIONS} from './versions';
-import {LAYER_VIS_CONFIGS, FILTER_VIEW_TYPES} from '@kepler.gl/constants';
+import {LAYER_VIS_CONFIGS, FILTER_VIEW_TYPES, FILTER_TYPES} from '@kepler.gl/constants';
 import {colorRangeBackwardCompatibility, isFilterValidToSave, findById} from '@kepler.gl/utils';
 import {notNullorUndefined} from '@kepler.gl/common-utils';
 import Schema from './schema';
@@ -612,11 +612,29 @@ export class FilterSchemaV0 extends Schema {
         .map(filter => {
           const {enlarged, view, ...filterProps} = filter;
 
-          const newFilter = {
+          let newFilter = {
             ...filterProps,
             // if view exist use it otherwise check for enlarged
             view: view ? view : enlarged ? FILTER_VIEW_TYPES.enlarged : FILTER_VIEW_TYPES.side
           };
+
+          if (newFilter.type === FILTER_TYPES.timeRange) {
+            const zoom = (newFilter as any).zoom || {};
+            newFilter = {
+              ...newFilter,
+              zoom: {
+                stepMs:
+                  typeof zoom.stepMs === 'number' && Number.isFinite(zoom.stepMs)
+                    ? zoom.stepMs
+                    : undefined,
+                snapToBin: typeof zoom.snapToBin === 'boolean' ? zoom.snapToBin : false,
+                anchor:
+                  zoom.anchor === 'start' || zoom.anchor === 'center' || zoom.anchor === 'end'
+                    ? zoom.anchor
+                    : 'end'
+              }
+            };
+          }
 
           return newFilter;
         })
@@ -859,7 +877,8 @@ export const filterPropsV1 = {
   enabled: null,
 
   invertTrendColor: null,
-  timezone: null
+  timezone: null,
+  zoom: null
 };
 
 export const propertiesV0 = {

@@ -3,7 +3,14 @@
 
 import {RGBColor, Merge, RequireFrom} from './types';
 
-import {Filter, InteractionConfig, AnimationConfig, SplitMap, Feature} from './reducers';
+import {
+  Filter,
+  InteractionConfig,
+  AnimationConfig,
+  SplitMap,
+  Feature,
+  TimeFilterZoomOptions
+} from './reducers';
 
 import {LayerTextLabel} from './layers';
 
@@ -25,6 +32,7 @@ export type SavedFilter = {
   layerId: Filter['layerId'];
   syncedWithLayerTimeline: Filter['syncedWithLayerTimeline'];
   syncTimelineMode: Filter['syncTimelineMode'];
+  zoom?: TimeFilterZoomOptions;
 };
 export type MinSavedFilter = RequireFrom<SavedFilter, 'dataId' | 'id' | 'name' | 'type' | 'value'>;
 export type ParsedFilter = SavedFilter | MinSavedFilter;

@@ -29,6 +29,8 @@ interface RangePlotProps {
   };
   lineChart?: LineChartType;
   bins?: Bins;
+  onShiftBrush?: (range: [number, number]) => void;
+  onCtrlPan?: (delta: number) => void;
 
   isEnlarged?: boolean;
   isRanged?: boolean;

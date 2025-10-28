@@ -218,6 +218,11 @@ export default function BottomWidgetFactory(
                   onClose={onClose}
                   timeline={timeline}
                   onToggleMinify={onToggleMinify}
+                  setTimeFilterWindow={visStateActions.setTimeFilterWindow}
+                  setTimeFilterWindowWidth={visStateActions.setTimeFilterWindowWidth}
+                  setTimeFilterSnapToBin={visStateActions.setTimeFilterSnapToBin}
+                  setTimeFilterStep={visStateActions.setTimeFilterStep}
+                  zoomTimeFilter={visStateActions.zoomTimeFilter}
                 />
               ) : null
             }

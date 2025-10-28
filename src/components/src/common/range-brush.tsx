@@ -60,6 +60,8 @@ export interface RangeBrushProps {
   marks?: number[];
   onMouseoverHandle: () => void;
   onMouseoutHandle: () => void;
+  onShiftBrush?: (range: [number, number]) => void;
+  onCtrlPan?: (delta: number) => void;
 }
 
 function RangeBrushFactory(): React.ComponentType<RangeBrushProps> {
@@ -91,6 +93,18 @@ function RangeBrushFactory(): React.ComponentType<RangeBrushProps> {
 
       this.root = this.rootContainer.current ? select(this.rootContainer.current) : undefined;
       this.brush = brushX()
+        .filter((event: any) => {
+          if (!event) {
+            return false;
+          }
+          if (event.type === 'mousedown') {
+            return event.button === 0;
+          }
+          if (event.type === 'dblclick') {
+            return false;
+          }
+          return true;
+        })
         .handleSize(3)
         .on('start', event => {
           if (typeof this.props.onBrushStart === 'function') this.props.onBrushStart();
@@ -221,12 +235,33 @@ function RangeBrushFactory(): React.ComponentType<RangeBrushProps> {
         isRanged
       } = this.props;
       const invert = (x: number) => (x * (max - min)) / width + min;
-      let d0 = invert(sel0);
-      let d1 = invert(sel1);
-      // this makes sure if points are right at the beginning of the domains are displayed correctly
-      // the problem here is bisectLeftx
-      d0 = d0 === min ? d0 : normalizeSliderValue(d0, min, step, marks);
-      d1 = normalizeSliderValue(d1, min, step, marks);
+      const raw0 = invert(sel0);
+      const raw1 = invert(sel1);
+      const sourceEvent = evt.sourceEvent || {};
+      const isCtrlPan = Boolean(
+        (sourceEvent.ctrlKey || sourceEvent.metaKey) && this.props.onCtrlPan && this._startSel
+      );
+
+      if (isCtrlPan) {
+        const startSel = this._startSel || evt.selection;
+        const startMid = invert((startSel[0] + startSel[1]) / 2);
+        const currentMid = invert((sel0 + sel1) / 2);
+        const delta = currentMid - startMid;
+        this.props.onCtrlPan?.(delta);
+        this._startSel = evt.selection;
+        return;
+      }
+
+      const shouldNormalize = !(evt.sourceEvent?.shiftKey && this.props.onShiftBrush);
+      let d0 = shouldNormalize ? (raw0 === min ? raw0 : normalizeSliderValue(raw0, min, step, marks)) : raw0;
+      let d1 = shouldNormalize ? normalizeSliderValue(raw1, min, step, marks) : raw1;
+
+      const isShiftZoom = Boolean(evt.sourceEvent?.shiftKey && this.props.onShiftBrush);
+      if (isShiftZoom) {
+        const ordered: [number, number] = d0 <= d1 ? [d0, d1] : [d1, d0];
+        this.props.onShiftBrush?.(ordered);
+        return;
+      }
 
       if (isRanged) this._move(d0, d1);
       else this._move(...(right ? [d1, d1] : [d0, d0]));

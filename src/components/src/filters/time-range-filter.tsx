@@ -34,6 +34,7 @@ export function timeRangeSliderFieldsSelector(
     isAnimating: filter.isAnimating,
     timezone: filter.timezone,
     timeFormat,
+    zoom: filter.zoom,
     filter,
     datasets,
     layers,

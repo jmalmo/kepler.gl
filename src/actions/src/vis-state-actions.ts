@@ -383,6 +383,113 @@ export function setFilter(
   };
 }
 
+export type SetTimeFilterWindowUpdaterAction = {
+  idx: number;
+  window: [number, number];
+  enforceBounds?: boolean;
+  snap?: boolean;
+};
+
+export function setTimeFilterWindow({
+  idx,
+  window,
+  enforceBounds,
+  snap
+}: SetTimeFilterWindowUpdaterAction): Merge<
+  SetTimeFilterWindowUpdaterAction,
+  {type: typeof ActionTypes.SET_TIME_FILTER_WINDOW}
+> {
+  return {
+    type: ActionTypes.SET_TIME_FILTER_WINDOW,
+    idx,
+    window,
+    enforceBounds,
+    snap
+  };
+}
+
+export type SetTimeFilterStepUpdaterAction = {
+  idx: number;
+  stepMs?: number;
+};
+
+export function setTimeFilterStep({
+  idx,
+  stepMs
+}: SetTimeFilterStepUpdaterAction): Merge<
+  SetTimeFilterStepUpdaterAction,
+  {type: typeof ActionTypes.SET_TIME_FILTER_STEP}
+> {
+  return {
+    type: ActionTypes.SET_TIME_FILTER_STEP,
+    idx,
+    stepMs
+  };
+}
+
+export type SetTimeFilterWindowWidthUpdaterAction = {
+  idx: number;
+  width: number;
+  anchor?: 'start' | 'end' | 'center';
+};
+
+export function setTimeFilterWindowWidth({
+  idx,
+  width,
+  anchor
+}: SetTimeFilterWindowWidthUpdaterAction): Merge<
+  SetTimeFilterWindowWidthUpdaterAction,
+  {type: typeof ActionTypes.SET_TIME_FILTER_WINDOW_WIDTH}
+> {
+  return {
+    type: ActionTypes.SET_TIME_FILTER_WINDOW_WIDTH,
+    idx,
+    width,
+    anchor
+  };
+}
+
+export type SetTimeFilterSnapToBinUpdaterAction = {
+  idx: number;
+  snap: boolean;
+};
+
+export function setTimeFilterSnapToBin({
+  idx,
+  snap
+}: SetTimeFilterSnapToBinUpdaterAction): Merge<
+  SetTimeFilterSnapToBinUpdaterAction,
+  {type: typeof ActionTypes.SET_TIME_FILTER_SNAP_TO_BIN}
+> {
+  return {
+    type: ActionTypes.SET_TIME_FILTER_SNAP_TO_BIN,
+    idx,
+    snap
+  };
+}
+
+export type ZoomTimeFilterUpdaterAction = {
+  idx: number;
+  factor: number;
+  center: number;
+};
+
+export function zoomTimeFilter({
+  idx,
+  factor,
+  center
+}: ZoomTimeFilterUpdaterAction): Merge<
+  ZoomTimeFilterUpdaterAction,
+  {type: typeof ActionTypes.ZOOM_TIME_FILTER}
+> {
+  return {
+    type: ActionTypes.ZOOM_TIME_FILTER,
+    idx,
+    factor,
+    center
+  };
+}
+
 export type SetFilterAnimationTimeUpdaterAction = {
   idx: number;
   prop: string;
